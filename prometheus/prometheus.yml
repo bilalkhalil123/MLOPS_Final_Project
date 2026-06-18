@@ -1,0 +1,18 @@
+global:
+  scrape_interval: 15s
+
+rule_files:
+  - /configs/alert_rules.yml
+
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets: ["alertmanager:9093"]
+
+scrape_configs:
+  # Set EC2_PUBLIC_IP in .env, then replace the target below before starting compose.
+  - job_name: ml_inference_api
+    static_configs:
+      - targets: ["34.229.48.102:8000"]
+        labels:
+          service: mlops-inference

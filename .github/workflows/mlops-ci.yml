@@ -1,0 +1,46 @@
+name: MLOps CI
+
+on:
+  push:
+    branches: ["main"]
+
+jobs:
+  lint-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+      - name: Lint
+        run: ruff check .
+      - name: Test
+        run: pytest
+
+  build-push:
+    needs: lint-and-test
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build Docker image
+        run: docker build -t mlops-inference:test .
+
+      - name: Log in and push Docker image
+        env:
+          DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}
+          DOCKER_PASSWORD: ${{ secrets.DOCKER_PASSWORD }}
+        run: |
+          DOCKER_USER="$(printf '%s' "$DOCKER_USERNAME" | tr -d '\r\n' | xargs)"
+          IMAGE="${DOCKER_USER}/mlops-project"
+          printf '%s' "$DOCKER_PASSWORD" | docker login -u "$DOCKER_USER" --password-stdin
+          docker tag mlops-inference:test "${IMAGE}:latest"
+          docker tag mlops-inference:test "${IMAGE}:${{ github.sha }}"
+          docker push "${IMAGE}:latest"
+          docker push "${IMAGE}:${{ github.sha }}"
+
+      # EC2 auto-deploy skipped — GitHub runners cannot reliably SSH to the instance.
+      # Deploy manually: bash deploy/deploy.sh  (or pull image on EC2 after push)

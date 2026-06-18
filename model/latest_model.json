@@ -1,0 +1,9 @@
+{
+  "version": 7,
+  "path": "model/model_v7.pkl",
+  "accuracy": 0.85,
+  "feature_columns": [
+    "f0",
+    "f1"
+  ]
+}

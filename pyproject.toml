@@ -1,0 +1,6 @@
+[tool.ruff.lint.per-file-ignores]
+# Entry points call ensure_project_root() before local package imports.
+"ingestion/ingestion.py" = ["E402"]
+"model/retrain_trigger.py" = ["E402"]
+"model/train.py" = ["E402"]
+"serving/app.py" = ["E402"]

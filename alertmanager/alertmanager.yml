@@ -1,0 +1,6 @@
+route:
+  receiver: default
+
+receivers:
+  - name: default
+    # Slack added in Phase 6 — set api_url in slack_configs when SLACK_WEBHOOK_URL is ready

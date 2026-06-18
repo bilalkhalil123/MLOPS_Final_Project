@@ -1,0 +1,993 @@
+Course Project
+End-to-End MLOps Pipeline with Real-Time Monitoring, Alerting, and CI/CD
+
+Automated Model Retraining · Prometheus · Grafana · Alertmanager · Slack · AWS · GitHub Actions
+
+Course: Machine Learning Operations (MLOps)
+
+Semester: Spring 2026
+
+Total Marks: 100 Points + 10 Bonus Points
+
+Submission: As specified by the instructor
+
+This project is designed to simulate a production-grade MLOps environment. Students are expected to integrate data pipelines, model lifecycle management, cloud deployment, and observability tooling into a single coherent system.
+
+Contents
+Project Overview
+System Architecture Overview
+Part 1 — Data Ingestion and Schema Monitoring
+Data Source
+API Behavior
+What Your Ingestion Script Must Do
+Part 2 — ML Model Training and Auto-Retraining
+Training Requirements
+Auto-Retraining Logic
+Part 3 — AWS Deployment
+Overview
+ML Inference API
+Deployment Steps
+Deployment Script
+Part 4 — Prometheus Metrics Exporter
+Required Metrics
+Implementation Notes
+Part 5 — Prometheus, Grafana, and Alertmanager Stack
+Overview
+docker-compose.yml Requirements
+Prometheus Configuration
+Grafana Dashboard
+Part 6 — Alerting via Slack
+Overview
+Required Alert Rules
+Alertmanager Slack Configuration
+Part 7 — GitHub Actions CI/CD Pipeline
+Overview
+Workflow Requirements
+Required Unit Tests
+Repository Secrets
+Recommended Project Structure
+Submission Requirements
+Grading Rubric
+Suggested Time Plan
+Academic Integrity
+Helpful Resources
+1. Project Overview
+
+In modern machine learning engineering, shipping a model is only the beginning. Production systems must continuously monitor data quality, detect drift, respond to failures, retrain models automatically, and notify stakeholders — all without manual intervention.
+
+This project tasks you with building exactly such a system, end-to-end.
+
+You will:
+
+Ingest a changing dataset from a provided HTTP API endpoint that simulates real-world data evolution (schema changes, distribution shifts, intermittent unavailability).
+Train a machine learning classifier and deploy it as a REST API on AWS.
+Expose Prometheus-compatible metrics from your ML service.
+Set up a full observability stack (Prometheus + Grafana + Alertmanager) using Docker Compose.
+Configure real-time Slack alerts for critical system events.
+Implement automated model retraining and redeployment when model quality degrades.
+Automate your build, test, and deploy pipeline using GitHub Actions CI/CD.
+Note
+
+This project is intentionally scoped to require 8–9 hours of focused work. Plan your time across the sections below. It is strongly recommended to complete tasks in the order presented, as later sections depend on earlier ones.
+
+2. System Architecture Overview
+
+The overall system you will build follows this high-level architecture:
+
+Your Local Machine
+│
+├── Data Ingestion Script (Python)
+│      └── HTTP GET /records
+│
+├── Data Drift & Schema Monitor
+│
+├── ML Trainer & Retraining Logic
+│
+├── Deploy / Push Docker Image
+│
+└── Docker Compose
+       ├── Prometheus (scrapes metrics)
+       ├── Grafana (dashboards)
+       └── Alertmanager → Slack Webhook
+
+AWS EC2 Instance
+│
+├── ML Inference API
+│      ├── POST /predict
+│      └── GET /metrics
+│
+└── GitHub Actions CI/CD
+       ├── Lint & Test
+       ├── Build Docker Image
+       ├── Push to ECR / DockerHub
+       └── SSH Deploy to EC2
+3. Part 1 — Data Ingestion and Schema Monitoring
+
+Estimated Time: 1.0 – 1.5 hours
+
+3.1 Data Source
+
+Rather than a fixed static dataset, this project uses a live HTTP endpoint that returns evolving batches of records.
+
+This simulates a real-world data pipeline where upstream data can change at any time:
+
+New features may appear
+Old features may disappear
+The service may become temporarily unavailable
+Important
+
+You are permitted to call only the following endpoint:
+
+http://149.40.228.124:6500/records
+
+Calling any other endpoints on this server is not permitted and may result in disqualification of the relevant task.
+
+3.2 API Behavior
+Success (HTTP 200)
+
+Returns a JSON payload containing:
+
+schema: a list of feature names currently in the dataset.
+records: a batch of data rows matching the current schema.
+Service Unavailable (HTTP 503)
+
+The endpoint is intentionally configured to return 503 errors at intervals, simulating data source downtime.
+
+Your system must:
+
+Detect this
+Log it
+Increment the appropriate Prometheus counter
+Fire a Slack alert
+3.3 What Your Ingestion Script Must Do
+
+Write a Python script or service (ingestion.py or similar) that:
+
+1. Polls the API
+
+Calls the /records endpoint at regular intervals (e.g., every 30–60 seconds or upon invocation).
+
+2. Stores Data
+
+Parses and stores each batch locally.
+
+Examples:
+
+CSV
+Parquet
+In-memory storage
+3. Detects Schema Changes
+
+Compare the current schema with the previous schema.
+
+If:
+
+A new feature appears:
+Log it
+Fire metric
+Send Slack alert
+A feature disappears:
+Log it
+Fire metric
+Send Slack alert
+4. Detects Distribution Drift
+
+Compute simple statistics such as:
+
+Mean
+Standard Deviation
+
+Compare against a baseline.
+
+If drift exceeds a configurable threshold:
+
+Fire drift metric
+Send Slack alert
+5. Handles 503 Responses
+
+When API returns HTTP 503:
+
+Log failure
+Increment datalake_unavailable
+Send Slack alert
+6. Triggers Retraining
+
+Trigger model retraining when:
+
+Enough new data accumulates
+Schema changes occur
+Distribution drift is detected
+Deliverables
+ingestion/
+├── ingestion.py
+└── drift_detector.py
+
+Include brief inline comments explaining implementation decisions.
+4. Part 2 — ML Model Training and Auto-Retraining
+
+Estimated Time: 1.0 – 1.5 hours
+
+4.1 Training Requirements
+
+Using the data ingested in Part 1, train a binary or multi-class classifier.
+
+You may use any algorithm such as:
+
+Logistic Regression
+Random Forest
+Gradient Boosting
+Any suitable classifier
+
+The following conditions must be met:
+
+Accuracy Requirement
+
+Training must continue until:
+
+Validation Accuracy ≥ 0.80
+Iteration Limit
+
+If the target accuracy is not reached within a configurable number of iterations:
+
+Log a warning
+Continue with the best model achieved
+Model Serialization
+
+Store the trained model using:
+
+joblib
+pickle
+ONNX
+or equivalent
+
+Use versioned filenames:
+
+model_v1.pkl
+model_v2.pkl
+model_v3.pkl
+Metrics Tracking
+
+Record and expose:
+
+Model Accuracy
+Model Version
+
+through the Prometheus exporter.
+
+4.2 Auto-Retraining Logic
+
+The model must automatically retrain when any of the following occur:
+
+1. Accuracy Drops Below 0.80
+
+Detected by comparing predictions on a held-out validation set with the latest ingested data.
+
+2. Distribution Drift Detected
+
+Incoming data distribution changes significantly.
+
+3. Schema Change
+
+When:
+
+Features are added
+Features are removed
+
+and feature engineering needs updating.
+
+When Retraining Happens
+
+The system must:
+
+Increment:
+retrain_count_total
+Log the reason for retraining.
+Redeploy the updated model to AWS.
+Send a Slack notification containing:
+Retraining triggered
+Reason
+New accuracy
+Deliverables
+model/
+├── train.py
+├── retrain_trigger.py
+└── model_v{N}.pkl
+5. Part 3 — AWS Deployment
+
+Estimated Time: 1.5 – 2.0 hours
+
+5.1 Overview
+
+Your ML inference service must be publicly accessible on AWS.
+
+You may use:
+
+Option 1 (Recommended)
+
+AWS EC2
+
+Free-tier instance
+Run Docker container
+Option 2
+
+AWS App Runner / ECS
+
+For students familiar with container orchestration.
+
+5.2 ML Inference API
+
+Containerize the model server using Docker.
+
+The running service must expose:
+
+Endpoint	Method	Description
+/predict	POST	Accept JSON features and return prediction + confidence
+/metrics	GET	Return Prometheus metrics
+/health	GET	Return health status
+Health Endpoint Response
+{
+  "status": "ok"
+}
+5.3 Deployment Steps
+Step 1
+
+Create a Dockerfile for:
+
+FastAPI (recommended)
+Flask
+Step 2
+
+Push image to:
+
+Docker Hub
+AWS ECR
+Step 3
+
+Launch EC2 instance:
+
+Ubuntu 22.04
+t2.micro or t3.micro
+Step 4
+
+SSH into EC2 and run container.
+
+Step 5
+
+Configure Security Groups to allow:
+
+80
+8000
+9090
+3000
+
+(or any ports you use)
+
+Step 6
+
+Record EC2 Public IP.
+
+Prometheus will scrape metrics using this IP.
+
+5.4 Deployment Script
+
+Provide:
+
+deploy/deploy.sh
+
+The script should:
+
+Build image
+Push image
+Deploy to EC2
+
+This script will later be invoked by GitHub Actions.
+
+Deliverables
+Dockerfile
+deploy/deploy.sh
+Screenshot of running EC2 instance
+Successful curl to:
+/health
+/predict
+EC2 public IP in README
+6. Part 4 — Prometheus Metrics Exporter
+
+Estimated Time: 0.5 – 1.0 hour
+
+6.1 Required Metrics
+
+Expose metrics at:
+
+/metrics
+
+using the Prometheus text format.
+
+Use:
+
+pip install prometheus-client
+Required Metrics
+Metric Name	Type	Description
+model_accuracy	Gauge	Current validation accuracy
+records_processed_total	Counter	Total ingested records
+retrain_count_total	Counter	Number of retrain events
+distribution_drift_detected	Gauge	1 if drift detected
+feature_added	Counter	Features added
+feature_removed	Counter	Features removed
+datalake_unavailable	Counter	Number of HTTP 503 responses
+response_delay_seconds	Histogram	Prediction latency
+6.2 Implementation Notes
+
+Expose metrics at:
+
+http://<ec2-ip>/metrics
+
+Metrics must be:
+
+Live
+Real
+Not mocked
+Deliverables
+exporter/
+└── metrics.py
+
+Provide:
+
+Working metrics endpoint
+Screenshot of raw metrics output
+7. Part 5 — Prometheus, Grafana, and Alertmanager Stack
+
+Estimated Time: 1.0 – 1.5 hours
+
+7.1 Overview
+
+Deploy the following stack using Docker Compose:
+
+Prometheus
+
+Scrapes /metrics
+
+Grafana
+
+Visualizes metrics
+
+Alertmanager
+
+Receives alerts and forwards them to Slack
+
+7.2 docker-compose.yml Requirements
+
+Minimal structure:
+
+version: "3.8"
+
+services:
+  prometheus:
+    image: prom/prometheus:latest
+    ports:
+      - "9090:9090"
+
+  grafana:
+    image: grafana/grafana:latest
+    ports:
+      - "3000:3000"
+
+  alertmanager:
+    image: prom/alertmanager:latest
+    ports:
+      - "9093:9093"
+
+Volumes must be configured for:
+
+prometheus.yml
+alert_rules.yml
+alertmanager.yml
+Grafana persistence
+7.3 Prometheus Configuration
+
+Create:
+
+prometheus/prometheus.yml
+
+Requirements:
+
+Global Scrape Interval
+15s
+Scrape Job
+
+Target:
+
+AWS EC2 /metrics endpoint
+Alert Rules
+
+Reference:
+
+alert_rules.yml
+7.4 Grafana Dashboard
+
+Create dashboard panels for:
+
+1. Model Accuracy
+
+Line Chart
+
+2. Records Processed Rate
+
+Counter-rate graph
+
+3. Retrain Count
+
+Stat panel
+
+4. Distribution Drift
+
+Status panel
+
+5. Datalake Unavailable
+
+Stat panel
+
+6. Response Latency
+
+95th percentile histogram quantile
+
+Export dashboard to:
+
+grafana/dashboards/mlops_dashboard.json
+Deliverables
+docker-compose.yml
+prometheus/prometheus.yml
+prometheus/alert_rules.yml
+alertmanager/alertmanager.yml
+grafana/dashboards/mlops_dashboard.json
+
+Also provide screenshots of the Grafana dashboard with live metrics.
+
+8. Part 6 — Alerting via Slack
+
+Estimated Time: 0.5 – 1.0 hour
+
+8.1 Overview
+
+Configure Prometheus alerts and route them through Alertmanager to Slack.
+
+All alerts must:
+
+Be configured
+Be triggered
+Be demonstrated
+8.2 Required Alert Rules
+Alert 1 — DataLakeUnavailable
+
+Condition:
+
+increase(datalake_unavailable[1m]) > 0
+
+Message:
+
+Data source returned 503.
+Check API availability.
+Alert 2 — FeatureAdded
+
+Condition:
+
+increase(feature_added[1m]) > 0
+
+Message:
+
+New feature detected in schema.
+Retraining may be required.
+Alert 3 — FeatureRemoved
+
+Condition:
+
+increase(feature_removed[1m]) > 0
+
+Message:
+
+Feature dropped from schema.
+Verify pipeline compatibility.
+
+Reply "continue" and I'll extract Pages 13–18 (remaining alerts, GitHub Actions CI/CD, tests, project structure, submission requirements, grading rubric, and bonus marks).
+
+continue
+Alert 4 — DistributionDrift
+
+Condition:
+
+distribution_drift_detected == 1
+
+Message:
+
+Data distribution drift detected.
+Model may be stale.
+Alert 5 — FeatureDriftDetected
+
+Condition:
+
+distribution_drift_detected > 0
+
+Message:
+
+Feature-level drift flagged.
+Investigate upstream data.
+Alert 6 — HighResponseLatency
+
+Condition:
+
+histogram_quantile(
+  0.95,
+  response_delay_seconds_bucket
+) > 1.0
+
+Message:
+
+P95 response latency exceeded 1 second.
+Alert 7 — LowModelAccuracy
+
+Condition:
+
+model_accuracy < 0.8
+
+Message:
+
+Model accuracy dropped below threshold.
+Auto-retraining triggered.
+8.3 Alertmanager Slack Configuration
+
+Create:
+
+alertmanager/alertmanager.yml
+
+Route all alerts to Slack using a webhook URL.
+
+The webhook URL must be stored as an environment variable:
+
+SLACK_WEBHOOK_URL
+
+Example:
+
+receivers:
+  - name: "slack-notifications"
+    slack_configs:
+      - api_url: "${SLACK_WEBHOOK_URL}"
+        channel: "#mlops-alerts"
+        send_resolved: true
+        title: "[{{ .Status | toUpper }}] {{ .CommonLabels.alertname }}"
+        text: "{{ range .Alerts }}{{ .Annotations.description }}{{ end }}"
+Note
+
+To demonstrate alerts, you may temporarily:
+
+Lower thresholds
+Set metrics manually
+Inject artificial failures
+
+Include screenshots of every Slack alert firing.
+
+Deliverables
+prometheus/alert_rules.yml
+alertmanager/alertmanager.yml
+
+Plus screenshots of all 7 alerts.
+
+9. Part 7 — GitHub Actions CI/CD Pipeline
+
+Estimated Time: 1.0 – 1.5 hours
+
+9.1 Overview
+
+Create a GitHub Actions workflow that:
+
+Runs on every push to main
+Tests the project
+Builds Docker images
+Deploys automatically to AWS
+9.2 Workflow Requirements
+
+Create:
+
+.github/workflows/mlops-ci.yml
+Job 1 — Lint and Test
+
+Steps:
+
+Checkout repository
+Setup Python 3.10+
+Install requirements
+Run:
+flake8
+
+or
+
+ruff
+Run:
+pytest
+Job 2 — Build and Push Docker Image
+
+Requirements:
+
+Build Docker image
+Login to Docker Hub or ECR
+Use GitHub Secrets
+
+Required secrets:
+
+DOCKER_USERNAME
+DOCKER_PASSWORD
+
+Push tags:
+
+latest
+<git-sha>
+Job 3 — Deploy to AWS EC2
+
+Steps:
+
+SSH into EC2
+Pull latest image
+Stop old container
+Start new container
+Verify deployment
+
+Health verification:
+
+GET /health
+HTTP 200
+9.3 Required Unit Tests
+
+Create at least 3 tests.
+
+Test 1 — Schema Change Detection
+
+Simulate:
+
+Old schema
+New schema
+
+Verify:
+
+Feature added flag
+Feature removed flag
+Test 2 — Drift Detection
+
+Provide:
+
+Reference distribution
+Shifted distribution
+
+Verify drift is detected.
+
+Test 3 — Predict Endpoint
+
+Mock the model.
+
+Verify:
+
+{
+  "prediction": ...,
+  ...
+}
+
+is returned.
+
+9.4 Repository Secrets
+
+Configure these GitHub Secrets:
+
+Secret	Value
+DOCKER_USERNAME	Docker Hub username
+DOCKER_PASSWORD	Docker access token
+EC2_SSH_KEY	EC2 private key
+EC2_HOST	Public IP or DNS
+EC2_USER	SSH username
+SLACK_WEBHOOK_URL	Slack webhook
+Important
+
+Never hardcode:
+
+Passwords
+Tokens
+Keys
+Webhook URLs
+
+Use:
+
+Environment Variables
+GitHub Secrets
+
+Repositories exposing credentials lose marks.
+
+Deliverables
+.github/workflows/mlops-ci.yml
+tests/
+
+Include:
+
+Workflow file
+Passing tests
+Screenshot of successful GitHub Actions run
+10. Recommended Project Structure
+mlops-project/
+
+├── .github/
+│   └── workflows/
+│       └── mlops-ci.yml
+
+├── ingestion/
+│   ├── ingestion.py
+│   └── drift_detector.py
+
+├── model/
+│   ├── train.py
+│   ├── retrain_trigger.py
+│   └── model_v1.pkl
+
+├── serving/
+│   ├── app.py
+│   └── Dockerfile
+
+├── exporter/
+│   └── metrics.py
+
+├── prometheus/
+│   ├── prometheus.yml
+│   └── alert_rules.yml
+
+├── alertmanager/
+│   └── alertmanager.yml
+
+├── grafana/
+│   └── dashboards/
+│       └── mlops_dashboard.json
+
+├── deploy/
+│   └── deploy.sh
+
+├── tests/
+│   ├── test_schema.py
+│   ├── test_drift.py
+│   └── test_predict.py
+
+├── docker-compose.yml
+├── requirements.txt
+├── .env.example
+└── README.md
+11. Submission Requirements
+
+Submit:
+
+1. GitHub Repository URL
+
+Must be:
+
+Public
+Or shared with instructor/TA
+2. README.md
+
+Include:
+
+Team Information
+Names
+Roll Numbers
+Project Description
+
+Short overview of the system.
+
+Setup Instructions
+Local setup
+AWS deployment
+AWS Information
+EC2 Public IP
+How to test:
+/predict
+/metrics
+Slack Setup
+
+How to configure webhook.
+
+Alert Documentation
+
+Explain:
+
+Each alert
+How to trigger it
+3. Screenshots Folder
+
+Must contain:
+
+AWS
+EC2 running
+/health returns 200
+Metrics
+Raw /metrics output
+Grafana
+Dashboard with live data
+Slack
+All 7 alert screenshots
+GitHub Actions
+Green CI/CD pipeline
+4. Video Demo (3–5 Minutes)
+
+Show:
+
+Data ingestion
+Alert firing
+Grafana dashboard
+Successful CI/CD deployment
+
+Upload to:
+
+Google Drive
+YouTube (Unlisted)
+
+Place the link in README.
+
+12. Grading Rubric
+Criterion	Marks
+Data Ingestion & Schema Monitoring	15
+ML Model Training	15
+Auto-Retraining	10
+AWS Deployment	15
+Prometheus Metrics	10
+Prometheus + Grafana + Alertmanager	15
+Alerts	10
+GitHub Actions CI/CD	5
+Documentation & Code Quality	5
+Total
+100 Marks
+Bonus Marks
+B1 — Grafana Dashboard Excellence
+
+Extra dashboards, annotations, overlays.
+
++3 Marks
+B2 — Infrastructure as Code
+
+Use:
+
+Terraform
+AWS CloudFormation
++4 Marks
+B3 — Extended CI/CD
+
+Add a model accuracy gate:
+
+Fail build if accuracy < 0.80
++3 Marks
+13. Suggested Time Plan
+Task	Time	Marks
+Data Ingestion + Drift	1.5h	15
+Model Training + Retraining	1.5h	25
+AWS Deployment + Docker	1.5h	15
+Prometheus Exporter	0.5h	10
+Prometheus + Grafana + Alertmanager	1.0h	15
+Slack Alerts	0.5h	10
+GitHub Actions + Tests	1.0h	5
+Documentation	0.5h	5
+Total
+8 Hours
+100 Marks
+14. Academic Integrity
+
+
+
+15. Helpful Resources
+Prometheus Python Client
+https://github.com/prometheus/client_python
+Alertmanager Documentation
+https://prometheus.io/docs/alerting/latest/configuration/
+FastAPI Documentation
+https://fastapi.tiangolo.com/
+Docker Compose Documentation
+https://docs.docker.com/compose/
+GitHub Actions Documentation
+https://docs.github.com/en/actions
+Grafana Documentation
+https://grafana.com/docs/grafana/latest/getting-started/
+AWS Free Tier
+https://aws.amazon.com/free/
+Evidently AI (Optional Drift Detection)
+https://www.evidentlyai.com/
+Closing Note
+
+"Good luck! Build something you'd be proud to put in your portfolio."
