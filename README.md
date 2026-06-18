@@ -6,12 +6,12 @@ Course project: ingestion, training, auto-retraining, AWS deployment, Prometheus
 
 | Name | Roll Number |
 |------|-------------|
-| _Your Name_ | _Roll No_ |
+|Muhammad Bilal | 
 
 ## EC2 Public IP
 
 ```
-EC2_PUBLIC_IP=54.152.150.62
+EC2_PUBLIC_IP=" " 
 ```
 
 Replace the placeholder above after launching your instance.
@@ -161,6 +161,4 @@ After EC2 is live, set Prometheus to scrape `http://<EC2_PUBLIC_IP>:8000/metrics
 
 ---
 
-## Video demo
 
-_Add unlisted YouTube / Drive link here after recording._
